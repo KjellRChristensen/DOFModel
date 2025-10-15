@@ -215,6 +215,35 @@ fi
 
 echo ""
 echo "============================================================"
+echo "👤 Client Profile Endpoints"
+echo "============================================================"
+
+# Test get profile
+test_endpoint "GET" "/api/v1/profile" "Get client profile"
+
+# Test update profile
+echo ""
+echo -e "${BLUE}Testing:${NC} Update client profile"
+echo -e "${YELLOW}PUT${NC} /api/v1/profile"
+UPDATE_DATA='{"name":"Kjell R. Christensen","company":"DOF Subsea","role":"Senior Analyst","email":"kjell@dof.no","phone":"+47 123 45 678"}'
+response=$(curl -s -w "\n%{http_code}" -X PUT "$BASE_URL/api/v1/profile" \
+    -H "Content-Type: application/json" \
+    -d "$UPDATE_DATA")
+http_code=$(echo "$response" | tail -n1)
+body=$(echo "$response" | sed '$d')
+echo "Status Code: $http_code"
+echo "Response: ${body:0:200}..."
+if [ $http_code -ge 200 ] && [ $http_code -lt 300 ]; then
+    test_result "Update client profile" 0
+else
+    test_result "Update client profile" 1
+fi
+
+# Test get profile again to verify update
+test_endpoint "GET" "/api/v1/profile" "Get updated client profile"
+
+echo ""
+echo "============================================================"
 echo "🗺️  Location-Based Endpoints"
 echo "============================================================"
 

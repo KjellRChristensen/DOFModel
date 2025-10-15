@@ -289,3 +289,21 @@ class ClusterMember(Base):
 
     def __repr__(self):
         return f"<ClusterMember(cluster='{self.cluster_id}', field='{self.field_id}')>"
+
+
+class ClientProfile(Base):
+    """Client profile for the system user"""
+    __tablename__ = 'client_profiles'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    profile_key = Column(String(50), unique=True, nullable=False, index=True, default="default_profile")
+    name = Column(String(100), nullable=False)
+    company = Column(String(100), nullable=False)
+    role = Column(String(100), nullable=False)
+    email = Column(String(150))
+    phone = Column(String(50))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<ClientProfile(name='{self.name}', company='{self.company}', role='{self.role}')>"

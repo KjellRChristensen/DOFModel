@@ -11,7 +11,7 @@ import math
 from .models import (
     OilField, FieldLocation, Platform, LicenseBlock,
     FieldRelationship, CableRoute, CableInspection,
-    InfrastructureCluster, ClusterMember
+    InfrastructureCluster, ClusterMember, ClientProfile
 )
 
 
@@ -395,3 +395,52 @@ def get_cable_statistics(db: Session) -> dict:
         "total_inspections": total_inspections,
         "inspections_by_condition": {condition: count for condition, count in by_condition}
     }
+
+
+# ===== Client Profile Queries =====
+
+def get_profile(db: Session, profile_key: str = "default_profile") -> Optional[ClientProfile]:
+    """Get client profile by profile_key"""
+    return db.query(ClientProfile).filter(ClientProfile.profile_key == profile_key).first()
+
+
+def get_default_profile(db: Session) -> Optional[ClientProfile]:
+    """Get the default client profile"""
+    return get_profile(db, "default_profile")
+
+
+def create_profile(db: Session, profile_data: dict) -> ClientProfile:
+    """Create a new client profile"""
+    profile = ClientProfile(**profile_data)
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
+def update_profile(db: Session, profile_key: str, update_data: dict) -> Optional[ClientProfile]:
+    """Update client profile"""
+    profile = get_profile(db, profile_key)
+    if not profile:
+        return None
+
+    for key, value in update_data.items():
+        if value is not None and hasattr(profile, key):
+            setattr(profile, key, value)
+
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
+def get_or_create_default_profile(db: Session) -> ClientProfile:
+    """Get or create the default profile"""
+    profile = get_default_profile(db)
+    if not profile:
+        profile = create_profile(db, {
+            "profile_key": "default_profile",
+            "name": "Kjell R. Christensen",
+            "company": "DOF",
+            "role": "Analyst"
+        })
+    return profile

@@ -15,7 +15,8 @@ from app.models.cable import (
 )
 from app.database.database import get_db, init_db
 from app.database import queries
-from app.database.models import CableRoute, CableInspection
+from app.database.models import CableRoute, CableInspection, ClientProfile
+from app.schemas.client_profile import ClientProfileResponse, ClientProfileUpdate
 
 app = FastAPI(
     title="Underwater Cable Analysis API",
@@ -125,7 +126,7 @@ async def startup_event():
             print(f"   ✅ SQLite Database: Created (new)")
             print(f"   Location: {db_path}")
 
-        # Get database statistics
+        # Get database statistics and seed default profile
         from app.database.database import get_db_session
         with get_db_session() as db:
             from app.database.models import OilField, CableRoute, CableInspection
@@ -137,6 +138,13 @@ async def startup_event():
             print(f"      - Oil Fields: {field_count}")
             print(f"      - Cable Routes: {cable_count}")
             print(f"      - Inspections: {inspection_count}")
+
+            # Ensure default client profile exists
+            profile = queries.get_or_create_default_profile(db)
+            print(f"\n👤 Client Profile:")
+            print(f"   Name: {profile.name}")
+            print(f"   Company: {profile.company}")
+            print(f"   Role: {profile.role}")
 
     except Exception as e:
         print(f"   ❌ Database Error: {str(e)}")
@@ -496,6 +504,49 @@ async def get_all_inspections(
         ).limit(limit).all()
 
     return inspections
+
+
+# Client Profile Endpoints
+
+@app.get("/api/v1/profile", response_model=ClientProfileResponse)
+async def get_client_profile(db: Session = Depends(get_db)):
+    """
+    Get the current client profile
+    """
+    profile = queries.get_or_create_default_profile(db)
+    return profile
+
+
+@app.put("/api/v1/profile", response_model=ClientProfileResponse)
+async def update_client_profile(
+    profile_update: ClientProfileUpdate,
+    db: Session = Depends(get_db)
+):
+    """
+    Update the client profile
+
+    Only provided fields will be updated. Fields set to null will be ignored.
+    """
+    # Get update data excluding None values
+    update_data = profile_update.model_dump(exclude_unset=True, exclude_none=True)
+
+    if not update_data:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid fields provided for update"
+        )
+
+    # Update the default profile
+    profile = queries.update_profile(db, "default_profile", update_data)
+
+    if not profile:
+        # If profile doesn't exist, create it
+        profile = queries.create_profile(db, {
+            "profile_key": "default_profile",
+            **update_data
+        })
+
+    return profile
 
 
 if __name__ == "__main__":
