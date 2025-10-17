@@ -11,3 +11,12 @@ passlib[bcrypt]==1.7.4
 python-dotenv==1.0.1
 sqlalchemy==2.0.36
 alembic==1.13.3
+
+# AI Visual Inspection Dependencies (Phase 2)
+# Multi-Model AI Analysis Support
+ultralytics==8.3.0  # YOLOv8, YOLOv11, and custom YOLO variants
+torch>=2.0.0  # PyTorch for model inference
+torchvision>=0.15.0  # Computer vision utilities
+opencv-python==4.10.0.84  # Image processing
+scikit-image==0.24.0  # Advanced image processing
+scipy==1.14.1  # Scientific computing

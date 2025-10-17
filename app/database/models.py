@@ -235,6 +235,13 @@ class CableInspection(Base):
     recommendations = Column(Text)  # JSON array
     inspector = Column(String(100))
     notes = Column(Text)
+
+    # Multi-model analysis fields
+    models_used = Column(Text)  # JSON array of model types used
+    model_results = Column(Text)  # JSON object with results per model
+    consensus_detections = Column(Text)  # JSON array of consensus detections
+    analysis_metadata = Column(Text)  # JSON metadata about multi-model analysis
+
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationship

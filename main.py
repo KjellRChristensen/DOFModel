@@ -13,6 +13,16 @@ from app.models.cable import (
     CableSegment, CableLocation, InspectionPoint,
     CableCondition, DetectedIssue, IssueSeverity
 )
+from app.models.inspection import (
+    ImageAnalysisRequest,
+    AnalysisResponse as InspectionAnalysisResponse
+)
+from app.services.visual_inspection import VisualInspectionService
+from app.services.multi_model_inference import (
+    MultiModelInferenceService,
+    ModelType,
+    MultiModelResult
+)
 from app.database.database import get_db, init_db
 from app.database import queries
 from app.database.models import CableRoute, CableInspection, ClientProfile
@@ -52,8 +62,10 @@ class HealthResponse(BaseModel):
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Initialize ML model
+# Initialize ML models
 ml_model = CableAnalysisModel()
+visual_inspection_service = VisualInspectionService()
+multi_model_service = MultiModelInferenceService()
 
 # Initialize database on startup
 @app.on_event("startup")
@@ -234,6 +246,34 @@ async def health_check():
         message="All systems operational",
         timestamp=datetime.now().isoformat()
     )
+
+
+# AI Visual Inspection Endpoints (Phase 2)
+
+@app.post("/api/analyze", response_model=InspectionAnalysisResponse)
+async def analyze_visual_inspection(request: ImageAnalysisRequest):
+    """
+    AI-powered visual inspection endpoint for pipeline and subsea assets
+
+    Accepts base64 encoded image and returns:
+    - Overall condition assessment
+    - Detected defects with bounding boxes
+    - Confidence scores
+    - AI-generated recommendations
+
+    This endpoint matches frontend expectations from AI_VISUAL_INSPECTION_IMPLEMENTATION.md
+    """
+    try:
+        # Perform AI analysis
+        result = await visual_inspection_service.analyze_image(request.imageData)
+
+        return result
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Visual inspection analysis failed: {str(e)}"
+        )
 
 
 @app.post("/api/v1/analyze", response_model=AnalysisResult)
@@ -547,6 +587,297 @@ async def update_client_profile(
         })
 
     return profile
+
+
+# Multi-Model AI Analysis Endpoints
+
+@app.get("/api/v1/models/status")
+async def get_models_status():
+    """
+    Get status of all available AI models
+
+    Returns information about:
+    - YOLOv8 Crack Detection
+    - PDS-YOLO Pipeline Defect Detection
+    - MAS-YOLOv11 General Underwater Detection
+    """
+    return multi_model_service.get_model_status()
+
+
+@app.post("/api/v1/models/{model_type}/load")
+async def load_model(model_type: str):
+    """
+    Load a specific AI model
+
+    Args:
+        model_type: One of 'yolov8_crack', 'pds_yolo', 'mas_yolov11'
+    """
+    try:
+        model_enum = ModelType(model_type)
+        success = await multi_model_service.load_model(model_enum)
+
+        if success:
+            return {
+                "status": "success",
+                "message": f"Model {model_type} loaded successfully",
+                "model_info": multi_model_service.get_model_status()[model_type]
+            }
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to load model {model_type}"
+            )
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid model type: {model_type}. Valid types: yolov8_crack, pds_yolo, mas_yolov11"
+        )
+
+
+@app.post("/api/v1/models/{model_type}/unload")
+async def unload_model(model_type: str):
+    """
+    Unload a specific AI model from memory
+    """
+    try:
+        model_enum = ModelType(model_type)
+        await multi_model_service.unload_model(model_enum)
+
+        return {
+            "status": "success",
+            "message": f"Model {model_type} unloaded successfully"
+        }
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid model type: {model_type}"
+        )
+
+
+@app.post("/api/v1/models/load-all")
+async def load_all_models():
+    """
+    Load all available AI models
+    """
+    results = await multi_model_service.load_all_models()
+
+    success_count = sum(1 for success in results.values() if success)
+
+    return {
+        "status": "completed",
+        "models_loaded": success_count,
+        "total_models": len(results),
+        "results": {k.value: v for k, v in results.items()},
+        "model_status": multi_model_service.get_model_status()
+    }
+
+
+class MultiModelAnalysisRequest(BaseModel):
+    imageData: str
+    models: Optional[List[str]] = None  # If None, use all loaded models
+    timestamp: Optional[datetime] = None
+    metadata: Optional[dict] = None
+
+
+class MultiModelAnalysisResponse(BaseModel):
+    id: str
+    status: str
+    analyzed_at: datetime
+    models_used: List[str]
+    detections_by_model: dict
+    consensus_detections: List[dict]
+    overall_confidence: float
+    model_confidences: dict
+    metadata: dict
+
+
+@app.post("/api/v1/analyze-multi-model", response_model=MultiModelAnalysisResponse)
+async def analyze_with_multiple_models(request: MultiModelAnalysisRequest):
+    """
+    Analyze image with multiple AI models for improved accuracy
+
+    This endpoint analyzes a suspect image using multiple specialized models:
+    - Improved YOLOv8: Underwater crack detection
+    - PDS-YOLO: Pipeline defect detection
+    - MAS-YOLOv11: General underwater object detection
+
+    Returns aggregated results with consensus detections where multiple models agree.
+    """
+    try:
+        # Decode base64 image
+        from PIL import Image
+        import io
+        import base64
+
+        if ',' in request.imageData:
+            image_data = request.imageData.split(',')[1]
+        else:
+            image_data = request.imageData
+
+        image_bytes = base64.b64decode(image_data)
+        image = Image.open(io.BytesIO(image_bytes))
+
+        # Convert model names to enums
+        models_to_use = None
+        if request.models:
+            try:
+                models_to_use = [ModelType(m) for m in request.models]
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid model type in request: {str(e)}"
+                )
+
+        # Run multi-model analysis
+        result: MultiModelResult = await multi_model_service.analyze_with_multiple_models(
+            image,
+            models=models_to_use,
+            aggregate=True
+        )
+
+        # Generate analysis ID
+        analysis_id = f"multi_analysis_{uuid.uuid4().hex[:12]}"
+
+        # Format detections by model
+        detections_by_model = {}
+        for model_type, detections in result.detections_by_model.items():
+            detections_by_model[model_type.value] = [
+                {
+                    "bbox": det.bbox,
+                    "confidence": det.confidence,
+                    "class_name": det.class_name,
+                    "defect_type": det.defect_type.value,
+                    "severity": det.severity.value
+                }
+                for det in detections
+            ]
+
+        # Format consensus detections
+        consensus_detections = [
+            {
+                "id": det.id,
+                "type": det.type.value,
+                "severity": det.severity.value,
+                "confidence": det.confidence,
+                "location": {
+                    "x": det.location.x,
+                    "y": det.location.y,
+                    "width": det.location.width,
+                    "height": det.location.height
+                },
+                "description": det.description,
+                "dimensions": {
+                    "length": det.dimensions.length,
+                    "width": det.dimensions.width,
+                    "depth": det.dimensions.depth
+                } if det.dimensions else None
+            }
+            for det in result.consensus_detections
+        ]
+
+        return MultiModelAnalysisResponse(
+            id=analysis_id,
+            status="completed",
+            analyzed_at=datetime.utcnow(),
+            models_used=result.analysis_metadata.get("models_used", []),
+            detections_by_model=detections_by_model,
+            consensus_detections=consensus_detections,
+            overall_confidence=result.overall_confidence,
+            model_confidences={k.value: v for k, v in result.model_confidences.items()},
+            metadata=result.analysis_metadata
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No models loaded. Load models first using /api/v1/models/load-all"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Multi-model analysis failed: {str(e)}"
+        )
+
+
+@app.post("/api/v1/analyze-enhanced", response_model=InspectionAnalysisResponse)
+async def analyze_enhanced_visual_inspection(
+    request: ImageAnalysisRequest,
+    use_multi_model: bool = Query(True, description="Use multiple AI models for analysis")
+):
+    """
+    Enhanced AI visual inspection with optional multi-model analysis
+
+    This endpoint can use either:
+    - Single model (faster, good for real-time analysis)
+    - Multiple models (more accurate, better for suspect/critical images)
+
+    When multi_model=True, uses all loaded AI models and returns consensus results.
+    """
+    try:
+        if use_multi_model:
+            # Use multi-model analysis
+            from PIL import Image
+            import io
+            import base64
+
+            # Decode image
+            if ',' in request.imageData:
+                image_data = request.imageData.split(',')[1]
+            else:
+                image_data = request.imageData
+
+            image_bytes = base64.b64decode(image_data)
+            image = Image.open(io.BytesIO(image_bytes))
+
+            # Run multi-model analysis
+            multi_result: MultiModelResult = await multi_model_service.analyze_with_multiple_models(
+                image,
+                models=None,  # Use all loaded models
+                aggregate=True
+            )
+
+            # Convert to standard inspection response
+            from app.models.inspection import AnalysisResult, AssetCondition
+            from app.services.visual_inspection import SeverityScoringEngine, RecommendationEngine
+
+            severity_scorer = SeverityScoringEngine()
+            recommendation_engine = RecommendationEngine()
+
+            # Calculate overall condition
+            overall_condition = severity_scorer.calculate_overall_condition(multi_result.consensus_detections)
+
+            # Generate recommendations
+            recommendations = recommendation_engine.generate_recommendations(
+                multi_result.consensus_detections,
+                overall_condition
+            )
+
+            # Build response
+            analysis_id = f"enhanced_analysis_{uuid.uuid4().hex[:12]}"
+
+            result = AnalysisResult(
+                overall_condition=overall_condition,
+                confidence=multi_result.overall_confidence,
+                defects_detected=multi_result.consensus_detections,
+                recommendations=recommendations
+            )
+
+            return InspectionAnalysisResponse(
+                id=analysis_id,
+                status="completed",
+                processed_at=datetime.utcnow(),
+                result=result
+            )
+        else:
+            # Use standard single-model analysis
+            result = await visual_inspection_service.analyze_image(request.imageData)
+            return result
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Enhanced analysis failed: {str(e)}"
+        )
 
 
 if __name__ == "__main__":
