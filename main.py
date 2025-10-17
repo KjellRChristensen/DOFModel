@@ -10,18 +10,22 @@ import uuid
 import json
 from app.models.inference import CableAnalysisModel
 from app.models.cable import (
-    CableSegment, CableLocation, InspectionPoint,
-    CableCondition, DetectedIssue, IssueSeverity
+    CableSegment,
+    CableLocation,
+    InspectionPoint,
+    CableCondition,
+    DetectedIssue,
+    IssueSeverity,
 )
 from app.models.inspection import (
     ImageAnalysisRequest,
-    AnalysisResponse as InspectionAnalysisResponse
+    AnalysisResponse as InspectionAnalysisResponse,
 )
 from app.services.visual_inspection import VisualInspectionService
 from app.services.multi_model_inference import (
     MultiModelInferenceService,
     ModelType,
-    MultiModelResult
+    MultiModelResult,
 )
 from app.database.database import get_db, init_db
 from app.database import queries
@@ -31,7 +35,7 @@ from app.schemas.client_profile import ClientProfileResponse, ClientProfileUpdat
 app = FastAPI(
     title="Underwater Cable Analysis API",
     description="ML-powered image analysis for underwater cables",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 # CORS configuration for iOS frontend
@@ -43,6 +47,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # Response models
 class AnalysisResult(BaseModel):
     image_id: str
@@ -53,10 +58,12 @@ class AnalysisResult(BaseModel):
     cable_condition: Optional[str] = None
     recommendations: List[str] = []
 
+
 class HealthResponse(BaseModel):
     status: str
     message: str
     timestamp: str
+
 
 # Create directories for image storage
 UPLOAD_DIR = "uploads"
@@ -67,6 +74,7 @@ ml_model = CableAnalysisModel()
 visual_inspection_service = VisualInspectionService()
 multi_model_service = MultiModelInferenceService()
 
+
 # Initialize database on startup
 @app.on_event("startup")
 async def startup_event():
@@ -75,9 +83,9 @@ async def startup_event():
     import platform
     from pathlib import Path
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("🚀 DOF Backend - Underwater Cable Analysis API")
-    print("="*60)
+    print("=" * 60)
 
     # Python and Platform Info
     print(f"\n📦 System Information:")
@@ -89,6 +97,7 @@ async def startup_event():
     print(f"\n🔧 Hardware Acceleration:")
     try:
         import torch
+
         if torch.backends.mps.is_available():
             print(f"   ✅ MPS (Metal Performance Shaders): Available")
             print(f"   Device: {torch.backends.mps.is_built()}")
@@ -103,13 +112,14 @@ async def startup_event():
     print(f"\n🤖 ML Model Status:")
     try:
         import ollama
+
         # Try to list models
         models = ollama.list()
         print(f"   ✅ Ollama: Connected")
 
         # Check if our model is available
         model_name = ml_model.model_name
-        model_found = any(model_name in str(m) for m in models.get('models', []))
+        model_found = any(model_name in str(m) for m in models.get("models", []))
 
         if model_found:
             print(f"   ✅ Model '{model_name}': Available")
@@ -140,8 +150,10 @@ async def startup_event():
 
         # Get database statistics and seed default profile
         from app.database.database import get_db_session
+
         with get_db_session() as db:
             from app.database.models import OilField, CableRoute, CableInspection
+
             field_count = db.query(OilField).count()
             cable_count = db.query(CableRoute).count()
             inspection_count = db.query(CableInspection).count()
@@ -169,14 +181,12 @@ async def startup_event():
 
         # Check if Tailscale is running
         result = subprocess.run(
-            ["tailscale", "status", "--json"],
-            capture_output=True,
-            text=True,
-            timeout=5
+            ["tailscale", "status", "--json"], capture_output=True, text=True, timeout=5
         )
 
         if result.returncode == 0:
             import json
+
             tailscale_data = json.loads(result.stdout)
 
             # Get Tailscale IP
@@ -223,9 +233,9 @@ async def startup_event():
     except:
         pass
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("✅ Backend ready for connections")
-    print("="*60 + "\n")
+    print("=" * 60 + "\n")
 
 
 @app.get("/", response_model=HealthResponse)
@@ -234,7 +244,7 @@ async def root():
     return HealthResponse(
         status="ok",
         message="Underwater Cable Analysis API is running",
-        timestamp=datetime.now().isoformat()
+        timestamp=datetime.now().isoformat(),
     )
 
 
@@ -244,11 +254,12 @@ async def health_check():
     return HealthResponse(
         status="healthy",
         message="All systems operational",
-        timestamp=datetime.now().isoformat()
+        timestamp=datetime.now().isoformat(),
     )
 
 
 # AI Visual Inspection Endpoints (Phase 2)
+
 
 @app.post("/api/analyze", response_model=InspectionAnalysisResponse)
 async def analyze_visual_inspection(request: ImageAnalysisRequest):
@@ -271,19 +282,24 @@ async def analyze_visual_inspection(request: ImageAnalysisRequest):
 
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=f"Visual inspection analysis failed: {str(e)}"
+            status_code=500, detail=f"Visual inspection analysis failed: {str(e)}"
         )
 
 
-@app.post("/api/v1/analyze", response_model=AnalysisResult)
+@app.post("/api/analyze-file", response_model=AnalysisResult)
 async def analyze_image(
     file: UploadFile = File(...),
-    latitude: Optional[float] = Query(None, ge=-90, le=90, description="Latitude of image location"),
-    longitude: Optional[float] = Query(None, ge=-180, le=180, description="Longitude of image location"),
+    latitude: Optional[float] = Query(
+        None, ge=-90, le=90, description="Latitude of image location"
+    ),
+    longitude: Optional[float] = Query(
+        None, ge=-180, le=180, description="Longitude of image location"
+    ),
     depth: Optional[float] = Query(None, description="Depth in meters"),
-    cable_route_id: Optional[str] = Query(None, description="Route ID of cable being inspected"),
-    db: Session = Depends(get_db)
+    cable_route_id: Optional[str] = Query(
+        None, description="Route ID of cable being inspected"
+    ),
+    db: Session = Depends(get_db),
 ):
     """
     Main endpoint for underwater cable image analysis
@@ -299,7 +315,7 @@ async def analyze_image(
     if file.content_type not in allowed_types:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid file type. Allowed types: {', '.join(allowed_types)}"
+            detail=f"Invalid file type. Allowed types: {', '.join(allowed_types)}",
         )
 
     # Generate unique ID for this analysis
@@ -331,9 +347,13 @@ async def analyze_image(
                     depth=depth,
                     image_id=image_id,
                     condition=analysis_result.get("cable_condition", "unknown"),
-                    detected_issues=json.dumps(analysis_result.get("detected_issues", [])),
+                    detected_issues=json.dumps(
+                        analysis_result.get("detected_issues", [])
+                    ),
                     confidence_score=analysis_result.get("confidence_score", 0.0),
-                    recommendations=json.dumps(analysis_result.get("recommendations", []))
+                    recommendations=json.dumps(
+                        analysis_result.get("recommendations", [])
+                    ),
                 )
                 db.add(inspection)
 
@@ -349,17 +369,14 @@ async def analyze_image(
             confidence_score=analysis_result.get("confidence_score", 0.0),
             detected_issues=analysis_result.get("detected_issues", []),
             cable_condition=analysis_result.get("cable_condition", "unknown"),
-            recommendations=analysis_result.get("recommendations", [])
+            recommendations=analysis_result.get("recommendations", []),
         )
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Analysis failed: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 
-@app.post("/api/v1/batch-analyze")
+@app.post("/api/batch-analyze")
 async def batch_analyze_images(files: List[UploadFile] = File(...)):
     """
     Batch endpoint for analyzing multiple images
@@ -371,32 +388,28 @@ async def batch_analyze_images(files: List[UploadFile] = File(...)):
             result = await analyze_image(file)
             results.append(result)
         except Exception as e:
-            results.append({
-                "error": str(e),
-                "filename": file.filename
-            })
+            results.append({"error": str(e), "filename": file.filename})
 
     return {
         "total_images": len(files),
         "results": results,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
     }
 
 
-@app.get("/api/v1/analysis/{image_id}", response_model=AnalysisResult)
+@app.get("/api/analysis/{image_id}", response_model=AnalysisResult)
 async def get_analysis_result(image_id: str, db: Session = Depends(get_db)):
     """
     Retrieve previous analysis results by image ID
     """
     # Find inspection by image_id
-    inspection = db.query(CableInspection).filter(
-        CableInspection.image_id == image_id
-    ).first()
+    inspection = (
+        db.query(CableInspection).filter(CableInspection.image_id == image_id).first()
+    )
 
     if not inspection:
         raise HTTPException(
-            status_code=404,
-            detail=f"Analysis not found for image_id: {image_id}"
+            status_code=404, detail=f"Analysis not found for image_id: {image_id}"
         )
 
     return AnalysisResult(
@@ -404,15 +417,20 @@ async def get_analysis_result(image_id: str, db: Session = Depends(get_db)):
         timestamp=inspection.inspection_date.isoformat(),
         analysis_status="completed",
         confidence_score=inspection.confidence_score,
-        detected_issues=json.loads(inspection.detected_issues) if inspection.detected_issues else [],
+        detected_issues=(
+            json.loads(inspection.detected_issues) if inspection.detected_issues else []
+        ),
         cable_condition=inspection.condition,
-        recommendations=json.loads(inspection.recommendations) if inspection.recommendations else []
+        recommendations=(
+            json.loads(inspection.recommendations) if inspection.recommendations else []
+        ),
     )
 
 
 # Cable Management Endpoints
 
-@app.post("/api/v1/cables", status_code=201)
+
+@app.post("/api/cables", status_code=201)
 async def create_cable_route(
     route_id: str = Query(..., description="Unique route identifier"),
     name: str = Query(..., description="Cable route name"),
@@ -421,7 +439,7 @@ async def create_cable_route(
     cable_type: str = Query(..., description="Type of cable"),
     length_km: float = Query(..., gt=0, description="Length in kilometers"),
     installation_year: Optional[int] = Query(None, description="Installation year"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Register a new cable route for tracking
@@ -429,7 +447,9 @@ async def create_cable_route(
     # Check if route_id already exists
     existing = queries.get_cable_route_by_id(db, route_id)
     if existing:
-        raise HTTPException(status_code=400, detail="Cable route with this ID already exists")
+        raise HTTPException(
+            status_code=400, detail="Cable route with this ID already exists"
+        )
 
     cable = CableRoute(
         route_id=route_id,
@@ -440,7 +460,7 @@ async def create_cable_route(
         length_km=length_km,
         installation_year=installation_year,
         operational=True,
-        inspection_required=True
+        inspection_required=True,
     )
     db.add(cable)
     db.commit()
@@ -448,17 +468,23 @@ async def create_cable_route(
     return cable
 
 
-@app.get("/api/v1/cables")
+@app.get("/api/cables")
 async def get_cable_routes(
-    operational: Optional[bool] = Query(None, description="Filter by operational status"),
-    needs_inspection: Optional[bool] = Query(None, description="Filter cables needing inspection"),
-    db: Session = Depends(get_db)
+    operational: Optional[bool] = Query(
+        None, description="Filter by operational status"
+    ),
+    needs_inspection: Optional[bool] = Query(
+        None, description="Filter cables needing inspection"
+    ),
+    db: Session = Depends(get_db),
 ):
     """
     Get all cable routes
     """
     if needs_inspection:
-        cables = queries.get_cables_needing_inspection(db, days_since_last_inspection=180)
+        cables = queries.get_cables_needing_inspection(
+            db, days_since_last_inspection=180
+        )
     else:
         cables = db.query(CableRoute).all()
         if operational is not None:
@@ -467,7 +493,7 @@ async def get_cable_routes(
     return cables
 
 
-@app.get("/api/v1/cables/{route_id}")
+@app.get("/api/cables/{route_id}")
 async def get_cable_route(route_id: str, db: Session = Depends(get_db)):
     """
     Get specific cable route by ID
@@ -478,7 +504,7 @@ async def get_cable_route(route_id: str, db: Session = Depends(get_db)):
     return cable
 
 
-@app.get("/api/v1/cables/{route_id}/inspections")
+@app.get("/api/cables/{route_id}/inspections")
 async def get_cable_inspections(route_id: str, db: Session = Depends(get_db)):
     """
     Get all inspection points for a specific cable route
@@ -493,12 +519,13 @@ async def get_cable_inspections(route_id: str, db: Session = Depends(get_db)):
 
 # Location-based Endpoints
 
-@app.get("/api/v1/inspections/nearby")
+
+@app.get("/api/inspections/nearby")
 async def get_nearby_inspections(
     latitude: float = Query(..., ge=-90, le=90),
     longitude: float = Query(..., ge=-180, le=180),
     radius_km: float = Query(10.0, gt=0, description="Search radius in kilometers"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Get inspection points near a specific location (for MapKit integration)
@@ -509,29 +536,35 @@ async def get_nearby_inspections(
 
     nearby = []
     for inspection, distance in inspections_with_distance:
-        nearby.append({
-            "inspection": {
-                "inspection_id": inspection.inspection_id,
-                "cable_route_id": inspection.cable_route_id,
-                "inspection_date": inspection.inspection_date.isoformat(),
-                "latitude": inspection.latitude,
-                "longitude": inspection.longitude,
-                "depth": inspection.depth,
-                "condition": inspection.condition,
-                "detected_issues": json.loads(inspection.detected_issues) if inspection.detected_issues else [],
-                "confidence_score": inspection.confidence_score
-            },
-            "distance_km": round(distance, 2)
-        })
+        nearby.append(
+            {
+                "inspection": {
+                    "inspection_id": inspection.inspection_id,
+                    "cable_route_id": inspection.cable_route_id,
+                    "inspection_date": inspection.inspection_date.isoformat(),
+                    "latitude": inspection.latitude,
+                    "longitude": inspection.longitude,
+                    "depth": inspection.depth,
+                    "condition": inspection.condition,
+                    "detected_issues": (
+                        json.loads(inspection.detected_issues)
+                        if inspection.detected_issues
+                        else []
+                    ),
+                    "confidence_score": inspection.confidence_score,
+                },
+                "distance_km": round(distance, 2),
+            }
+        )
 
     return nearby
 
 
-@app.get("/api/v1/inspections")
+@app.get("/api/inspections")
 async def get_all_inspections(
     condition: Optional[str] = Query(None, description="Filter by condition"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of results"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Get all inspection points (for map display)
@@ -539,16 +572,20 @@ async def get_all_inspections(
     if condition:
         inspections = queries.get_inspections_by_condition(db, condition)
     else:
-        inspections = db.query(CableInspection).order_by(
-            CableInspection.inspection_date.desc()
-        ).limit(limit).all()
+        inspections = (
+            db.query(CableInspection)
+            .order_by(CableInspection.inspection_date.desc())
+            .limit(limit)
+            .all()
+        )
 
     return inspections
 
 
 # Client Profile Endpoints
 
-@app.get("/api/v1/profile", response_model=ClientProfileResponse)
+
+@app.get("/api/profile", response_model=ClientProfileResponse)
 async def get_client_profile(db: Session = Depends(get_db)):
     """
     Get the current client profile
@@ -557,10 +594,9 @@ async def get_client_profile(db: Session = Depends(get_db)):
     return profile
 
 
-@app.put("/api/v1/profile", response_model=ClientProfileResponse)
+@app.put("/api/profile", response_model=ClientProfileResponse)
 async def update_client_profile(
-    profile_update: ClientProfileUpdate,
-    db: Session = Depends(get_db)
+    profile_update: ClientProfileUpdate, db: Session = Depends(get_db)
 ):
     """
     Update the client profile
@@ -572,8 +608,7 @@ async def update_client_profile(
 
     if not update_data:
         raise HTTPException(
-            status_code=400,
-            detail="No valid fields provided for update"
+            status_code=400, detail="No valid fields provided for update"
         )
 
     # Update the default profile
@@ -581,17 +616,17 @@ async def update_client_profile(
 
     if not profile:
         # If profile doesn't exist, create it
-        profile = queries.create_profile(db, {
-            "profile_key": "default_profile",
-            **update_data
-        })
+        profile = queries.create_profile(
+            db, {"profile_key": "default_profile", **update_data}
+        )
 
     return profile
 
 
 # Multi-Model AI Analysis Endpoints
 
-@app.get("/api/v1/models/status")
+
+@app.get("/api/models/status")
 async def get_models_status():
     """
     Get status of all available AI models
@@ -604,7 +639,7 @@ async def get_models_status():
     return multi_model_service.get_model_status()
 
 
-@app.post("/api/v1/models/{model_type}/load")
+@app.post("/api/models/{model_type}/load")
 async def load_model(model_type: str):
     """
     Load a specific AI model
@@ -620,21 +655,20 @@ async def load_model(model_type: str):
             return {
                 "status": "success",
                 "message": f"Model {model_type} loaded successfully",
-                "model_info": multi_model_service.get_model_status()[model_type]
+                "model_info": multi_model_service.get_model_status()[model_type],
             }
         else:
             raise HTTPException(
-                status_code=500,
-                detail=f"Failed to load model {model_type}"
+                status_code=500, detail=f"Failed to load model {model_type}"
             )
     except ValueError:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid model type: {model_type}. Valid types: yolov8_crack, pds_yolo, mas_yolov11"
+            detail=f"Invalid model type: {model_type}. Valid types: yolov8_crack, pds_yolo, mas_yolov11",
         )
 
 
-@app.post("/api/v1/models/{model_type}/unload")
+@app.post("/api/models/{model_type}/unload")
 async def unload_model(model_type: str):
     """
     Unload a specific AI model from memory
@@ -645,16 +679,13 @@ async def unload_model(model_type: str):
 
         return {
             "status": "success",
-            "message": f"Model {model_type} unloaded successfully"
+            "message": f"Model {model_type} unloaded successfully",
         }
     except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid model type: {model_type}"
-        )
+        raise HTTPException(status_code=400, detail=f"Invalid model type: {model_type}")
 
 
-@app.post("/api/v1/models/load-all")
+@app.post("/api/models/load-all")
 async def load_all_models():
     """
     Load all available AI models
@@ -668,7 +699,7 @@ async def load_all_models():
         "models_loaded": success_count,
         "total_models": len(results),
         "results": {k.value: v for k, v in results.items()},
-        "model_status": multi_model_service.get_model_status()
+        "model_status": multi_model_service.get_model_status(),
     }
 
 
@@ -691,7 +722,7 @@ class MultiModelAnalysisResponse(BaseModel):
     metadata: dict
 
 
-@app.post("/api/v1/analyze-multi-model", response_model=MultiModelAnalysisResponse)
+@app.post("/api/analyze-multi-model", response_model=MultiModelAnalysisResponse)
 async def analyze_with_multiple_models(request: MultiModelAnalysisRequest):
     """
     Analyze image with multiple AI models for improved accuracy
@@ -709,8 +740,8 @@ async def analyze_with_multiple_models(request: MultiModelAnalysisRequest):
         import io
         import base64
 
-        if ',' in request.imageData:
-            image_data = request.imageData.split(',')[1]
+        if "," in request.imageData:
+            image_data = request.imageData.split(",")[1]
         else:
             image_data = request.imageData
 
@@ -724,15 +755,14 @@ async def analyze_with_multiple_models(request: MultiModelAnalysisRequest):
                 models_to_use = [ModelType(m) for m in request.models]
             except ValueError as e:
                 raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid model type in request: {str(e)}"
+                    status_code=400, detail=f"Invalid model type in request: {str(e)}"
                 )
 
         # Run multi-model analysis
-        result: MultiModelResult = await multi_model_service.analyze_with_multiple_models(
-            image,
-            models=models_to_use,
-            aggregate=True
+        result: MultiModelResult = (
+            await multi_model_service.analyze_with_multiple_models(
+                image, models=models_to_use, aggregate=True
+            )
         )
 
         # Generate analysis ID
@@ -747,7 +777,7 @@ async def analyze_with_multiple_models(request: MultiModelAnalysisRequest):
                     "confidence": det.confidence,
                     "class_name": det.class_name,
                     "defect_type": det.defect_type.value,
-                    "severity": det.severity.value
+                    "severity": det.severity.value,
                 }
                 for det in detections
             ]
@@ -763,14 +793,18 @@ async def analyze_with_multiple_models(request: MultiModelAnalysisRequest):
                     "x": det.location.x,
                     "y": det.location.y,
                     "width": det.location.width,
-                    "height": det.location.height
+                    "height": det.location.height,
                 },
                 "description": det.description,
-                "dimensions": {
-                    "length": det.dimensions.length,
-                    "width": det.dimensions.width,
-                    "depth": det.dimensions.depth
-                } if det.dimensions else None
+                "dimensions": (
+                    {
+                        "length": det.dimensions.length,
+                        "width": det.dimensions.width,
+                        "depth": det.dimensions.depth,
+                    }
+                    if det.dimensions
+                    else None
+                ),
             }
             for det in result.consensus_detections
         ]
@@ -784,25 +818,26 @@ async def analyze_with_multiple_models(request: MultiModelAnalysisRequest):
             consensus_detections=consensus_detections,
             overall_confidence=result.overall_confidence,
             model_confidences={k.value: v for k, v in result.model_confidences.items()},
-            metadata=result.analysis_metadata
+            metadata=result.analysis_metadata,
         )
 
     except ValueError as e:
         raise HTTPException(
             status_code=400,
-            detail=f"No models loaded. Load models first using /api/v1/models/load-all"
+            detail=f"No models loaded. Load models first using /api/models/load-all",
         )
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=f"Multi-model analysis failed: {str(e)}"
+            status_code=500, detail=f"Multi-model analysis failed: {str(e)}"
         )
 
 
-@app.post("/api/v1/analyze-enhanced", response_model=InspectionAnalysisResponse)
+@app.post("/api/analyze-enhanced", response_model=InspectionAnalysisResponse)
 async def analyze_enhanced_visual_inspection(
     request: ImageAnalysisRequest,
-    use_multi_model: bool = Query(True, description="Use multiple AI models for analysis")
+    use_multi_model: bool = Query(
+        True, description="Use multiple AI models for analysis"
+    ),
 ):
     """
     Enhanced AI visual inspection with optional multi-model analysis
@@ -821,8 +856,8 @@ async def analyze_enhanced_visual_inspection(
             import base64
 
             # Decode image
-            if ',' in request.imageData:
-                image_data = request.imageData.split(',')[1]
+            if "," in request.imageData:
+                image_data = request.imageData.split(",")[1]
             else:
                 image_data = request.imageData
 
@@ -830,26 +865,30 @@ async def analyze_enhanced_visual_inspection(
             image = Image.open(io.BytesIO(image_bytes))
 
             # Run multi-model analysis
-            multi_result: MultiModelResult = await multi_model_service.analyze_with_multiple_models(
-                image,
-                models=None,  # Use all loaded models
-                aggregate=True
+            multi_result: MultiModelResult = (
+                await multi_model_service.analyze_with_multiple_models(
+                    image, models=None, aggregate=True  # Use all loaded models
+                )
             )
 
             # Convert to standard inspection response
             from app.models.inspection import AnalysisResult, AssetCondition
-            from app.services.visual_inspection import SeverityScoringEngine, RecommendationEngine
+            from app.services.visual_inspection import (
+                SeverityScoringEngine,
+                RecommendationEngine,
+            )
 
             severity_scorer = SeverityScoringEngine()
             recommendation_engine = RecommendationEngine()
 
             # Calculate overall condition
-            overall_condition = severity_scorer.calculate_overall_condition(multi_result.consensus_detections)
+            overall_condition = severity_scorer.calculate_overall_condition(
+                multi_result.consensus_detections
+            )
 
             # Generate recommendations
             recommendations = recommendation_engine.generate_recommendations(
-                multi_result.consensus_detections,
-                overall_condition
+                multi_result.consensus_detections, overall_condition
             )
 
             # Build response
@@ -859,14 +898,14 @@ async def analyze_enhanced_visual_inspection(
                 overall_condition=overall_condition,
                 confidence=multi_result.overall_confidence,
                 defects_detected=multi_result.consensus_detections,
-                recommendations=recommendations
+                recommendations=recommendations,
             )
 
             return InspectionAnalysisResponse(
                 id=analysis_id,
                 status="completed",
                 processed_at=datetime.utcnow(),
-                result=result
+                result=result,
             )
         else:
             # Use standard single-model analysis
@@ -875,8 +914,7 @@ async def analyze_enhanced_visual_inspection(
 
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=f"Enhanced analysis failed: {str(e)}"
+            status_code=500, detail=f"Enhanced analysis failed: {str(e)}"
         )
 
 
